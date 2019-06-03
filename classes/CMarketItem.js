@@ -30,6 +30,7 @@ SteamCommunity.prototype.getMarketItem = function(appid, hashName, currency, cal
 	}, "steamcommunity");
 };
 
+
 function CMarketItem(appid, hashName, community, body, $) {
 	this._appid = appid;
 	this._hashName = hashName;
