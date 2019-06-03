@@ -2,6 +2,7 @@ var SteamCommunity = require('../index.js');
 var Cheerio = require('cheerio');
 
 SteamCommunity.prototype.getMarketItem = function(appid, hashName, currency, callback) {
+  const { promise, rejectCB, resolveCB } = createPromise();
 	if (typeof currency == "function") {
 		callback = currency;
 		currency = 1;
@@ -9,25 +10,29 @@ SteamCommunity.prototype.getMarketItem = function(appid, hashName, currency, cal
 	var self = this;
 	this.httpRequest("https://steamcommunity.com/market/listings/" + appid + "/" + encodeURIComponent(hashName), function(err, response, body) {
 		if (err) {
-			callback(err);
+			callback ? callback(err) : rejectCB(err);
 			return;
 		}
 
 		var $ = Cheerio.load(body);
 		if($('.market_listing_table_message') && $('.market_listing_table_message').text().trim() == 'There are no listings for this item.') {
-			callback(new Error("There are no listings for this item."));
+      const err = new Error("There are no listings for this item.");
+      callback ?
+        callback(err) :
+        rejectCB(err);
 			return;
 		}
 
 		var item = new CMarketItem(appid, hashName, self, body, $);
 		item.updatePrice(currency, function(err) {
 			if(err) {
-				callback(err);
+				callback ? callback(err) : rejectCB(err);
 			} else {
-				callback(null, item);
+				callback ? callback(null, item) : resolveCB(item);
 			}
 		});
-	}, "steamcommunity");
+  }, "steamcommunity");
+  return callback ? undefined : promise;
 };
 
 
@@ -101,6 +106,7 @@ CMarketItem.prototype.updatePrice = function (currency, callback) {
 };
 
 CMarketItem.prototype.updatePriceForCommodity = function(currency, callback) {
+  const { promise, rejectCB, resolveCB } = createPromise();
 	if(!this.commodity) {
 		throw new Error("Cannot update price for non-commodity item");
 	}
@@ -111,14 +117,17 @@ CMarketItem.prototype.updatePriceForCommodity = function(currency, callback) {
 		"json": true
 	}, function(err, response, body) {
 		if (err) {
-			callback(err);
+			callback ? callback(err) : rejectCB(err);
 			return;
 		}
 
 		if(body.success != 1) {
+      const err = new Error("Error " + body.success);
 			if(callback) {
-				callback(new Error("Error " + body.success));
-			}
+				callback(err);
+			} else {
+        rejectCB(err);
+      }
 
 			return;
 		}
@@ -140,11 +149,15 @@ CMarketItem.prototype.updatePriceForCommodity = function(currency, callback) {
 		// TODO: The tables?
 		if(callback) {
 			callback(null);
-		}
-	}, "steamcommunity");
+		} else {
+      resolveCB();
+    }
+  }, "steamcommunity");
+  return callback ? undefined : promise;
 };
 
 CMarketItem.prototype.updatePriceForNonCommodity = function (currency, callback) {
+  const { promise, rejectCB, resolveCB } = createPromise();
 	if(this.commodity) {
 		throw new Error("Cannot update price for commodity item");
 	}
@@ -158,12 +171,13 @@ CMarketItem.prototype.updatePriceForNonCommodity = function (currency, callback)
 		"json": true
 	}, function(err, response, body) {
 		if (err) {
-			callback(err);
+			callback ? callback(err) : rejectCB(err);
 			return;
 		}
 
 		if (body.success != 1) {
-			callback && callback(new Error("Error " + body.success));
+      const err = new Error("Error " + body.success);
+      callback ? callback(err) : rejectCB(err);
 			return;
 		}
 
@@ -185,6 +199,20 @@ CMarketItem.prototype.updatePriceForNonCommodity = function (currency, callback)
 			}
 		}
 
-		callback && callback(null);
-	}, "steamcommunity");
+		callback ? callback(null) : resolveCB();
+  }, "steamcommunity");
+  return callback ? undefined : promise;
 };
+
+function createPromise(){
+  let resolveCB, rejectCB;
+  const promise = new Promise((resolve, reject) => {
+    resolveCB = resolve;
+    rejectCB = reject;
+  });
+  return {
+    promise,
+    resolveCB,
+    rejectCB
+  };
+}
